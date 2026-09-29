@@ -3,7 +3,9 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique check (username ~ '^[a-z0-9_]{3,32}$'),
   display_name text not null,
+  email text,
   role text not null check (role in ('seller', 'admin')),
+  approved_at timestamptz default now(),
   created_at timestamptz not null default now()
 );
 
@@ -61,6 +63,26 @@ $$;
 create trigger prepare_case_update_trigger before update on public.cases
 for each row execute function public.prepare_case_update();
 
+-- Every new Auth account starts as a seller awaiting admin approval.
+-- The role and approval state are assigned by the database, never by client metadata.
+create function public.handle_new_seller_registration()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.profiles (id, username, display_name, email, role, approved_at)
+  values (
+    new.id,
+    'seller_' || substring(replace(new.id::text, '-', '') from 1 for 12),
+    left(coalesce(nullif(btrim(new.raw_user_meta_data->>'display_name'), ''), nullif(split_part(new.email, '@', 1), ''), 'Seller'), 120),
+    new.email,
+    'seller',
+    null
+  );
+  return new;
+end;
+$$;
+create trigger on_auth_user_created_seller after insert on auth.users
+for each row execute function public.handle_new_seller_registration();
+
 alter table public.profiles enable row level security;
 alter table public.cases enable row level security;
 
@@ -68,6 +90,9 @@ create policy "Read own profile" on public.profiles for select to authenticated
   using (id = (select auth.uid()));
 create policy "Admin reads profiles" on public.profiles for select to authenticated
   using ((select public.is_support_admin()));
+create policy "Admin approves sellers" on public.profiles for update to authenticated
+  using ((select public.is_support_admin()))
+  with check ((select public.is_support_admin()));
 
 create policy "Seller reads own cases" on public.cases for select to authenticated
   using (seller_id = (select auth.uid()));
@@ -80,10 +105,14 @@ create policy "Seller creates own open case" on public.cases for insert to authe
     and exists (select 1 from public.profiles p
       where p.id = (select auth.uid()) and p.role = 'seller')
   );
+create policy "Only approved sellers create cases" on public.cases as restrictive for insert to authenticated
+  with check (exists (select 1 from public.profiles p
+    where p.id = (select auth.uid()) and p.role = 'seller' and p.approved_at is not null));
 create policy "Admin updates cases" on public.cases for update to authenticated
   using ((select public.is_support_admin()))
   with check ((select public.is_support_admin()));
 
 grant select on public.profiles to authenticated;
+grant update (approved_at) on public.profiles to authenticated;
 grant select, insert, update on public.cases to authenticated;
 grant usage, select on sequence public.cases_id_seq to authenticated;
