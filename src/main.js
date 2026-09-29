@@ -8,6 +8,9 @@ const db = URL && KEY ? createClient(URL, KEY) : null;
 const labels = { open: 'Open', in_progress: 'In Progress', solved: 'Solved' };
 const state = { user: null, profile: null, cases: [], selected: null, filter: 'all', query: '', page: 0, hasMore: false };
 const PAGE_SIZE = 100;
+const IMAGE_BUCKET = 'case-images';
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 const el = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -25,6 +28,26 @@ const setNotice = (message, error = false) => {
 const caseId = id => `REG-${String(id).padStart(6, '0')}`;
 const date = value => new Intl.DateTimeFormat('ms-MY', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }).format(new Date(value));
 const errorText = error => error?.message || 'Ada masalah. Sila cuba semula.';
+
+async function validateImage(file) {
+  if (!file) return '';
+  if (!IMAGE_TYPES[file.type] || file.size > MAX_IMAGE_BYTES || !file.size) return 'Pilih gambar JPG, PNG atau WebP yang tidak melebihi 5 MB.';
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const jpg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const png = [137, 80, 78, 71, 13, 10, 26, 10].every((value, i) => bytes[i] === value);
+  const webp = String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP';
+  if (!(file.type === 'image/jpeg' && jpg || file.type === 'image/png' && png || file.type === 'image/webp' && webp)) return 'Format gambar tidak sepadan dengan fail. Pilih JPG, PNG atau WebP.';
+  return '';
+}
+
+async function attachImage(caseItem, file) {
+  const path = `${state.user.id}/${caseItem.id}/${crypto.randomUUID()}.${IMAGE_TYPES[file.type]}`;
+  const { error: uploadError } = await db.storage.from(IMAGE_BUCKET).upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) return uploadError;
+  const { error } = await db.from('case_images').insert({ case_id: caseItem.id, storage_path: path });
+  if (error) { await db.storage.from(IMAGE_BUCKET).remove([path]); return error; }
+  return null;
+}
 
 function loginScreen(message = '') {
   state.selected = null;
@@ -216,22 +239,28 @@ function renderRows() {
 
 function submitScreen() {
   const main = el('div');
-  main.innerHTML = `<button class="btn btn-small back" id="back">← Kembali</button><div class="page-head"><div><p class="eyebrow">Seller · Laporan baharu</p><h1>Hantar isu pendaftaran</h1><p class="muted">Isi maklumat customer dan terangkan apa yang berlaku.</p></div></div><form class="card detail-box" id="case-form"><div class="detail-grid"><label class="field"><span>Nama customer *</span><input class="input" name="customer_name" maxlength="120" minlength="2" required></label><label class="field"><span>No. telefon customer *</span><input class="input" name="customer_phone" type="tel" maxlength="25" minlength="7" required></label><label class="field"><span>No. telefon seller *</span><input class="input" name="seller_phone" type="tel" maxlength="25" minlength="7" required></label><label class="field"><span>Unique code *</span><input class="input" name="unique_code" maxlength="80" required></label><label class="field detail-wide"><span>Komen / apa isu yang berlaku? *</span><textarea class="textarea" name="issue" minlength="5" maxlength="3000" required placeholder="Contoh: Customer sudah register tetapi unique code tidak keluar."></textarea></label></div><div id="notice" class="notice error" hidden></div><div class="form-actions"><button class="btn" type="button" id="cancel">Batal</button><button class="btn btn-primary" type="submit">Hantar isu</button></div></form>`;
+  main.innerHTML = `<button class="btn btn-small back" id="back">← Kembali</button><div class="page-head"><div><p class="eyebrow">Seller · Laporan baharu</p><h1>Hantar isu pendaftaran</h1><p class="muted">Isi maklumat customer dan terangkan apa yang berlaku.</p></div></div><form class="card detail-box" id="case-form"><div class="detail-grid"><label class="field"><span>Nama customer *</span><input class="input" name="customer_name" maxlength="120" minlength="2" required></label><label class="field"><span>No. telefon customer *</span><input class="input" name="customer_phone" type="tel" maxlength="25" minlength="7" required></label><label class="field"><span>No. telefon seller *</span><input class="input" name="seller_phone" type="tel" maxlength="25" minlength="7" required></label><label class="field"><span>Unique code *</span><input class="input" name="unique_code" maxlength="80" required></label><label class="field detail-wide"><span>Komen / apa isu yang berlaku? *</span><textarea class="textarea" name="issue" minlength="5" maxlength="3000" required placeholder="Contoh: Customer sudah register tetapi unique code tidak keluar."></textarea></label><label class="field detail-wide"><span>Gambar (pilihan)</span><input class="input" name="image" type="file" accept="image/jpeg,image/png,image/webp"><small>Satu gambar JPG, PNG atau WebP, maksimum 5 MB.</small></label></div><div id="notice" class="notice error" hidden></div><div class="form-actions"><button class="btn" type="button" id="cancel">Batal</button><button class="btn btn-primary" type="submit">Hantar isu</button></div></form>`;
   frame(main);
   main.querySelector('#back').addEventListener('click', () => dashboard());
   main.querySelector('#cancel').addEventListener('click', () => dashboard());
   main.querySelector('#case-form').addEventListener('submit', async event => {
     event.preventDefault();
     const form = event.currentTarget; const button = form.querySelector('[type=submit]');
-    const data = Object.fromEntries([...new FormData(form)].map(([key, value]) => [key, String(value).trim()]));
+    const image = form.elements.image.files[0];
+    const imageError = await validateImage(image);
+    if (imageError) { setNotice(imageError, true); return; }
+    const data = Object.fromEntries([...new FormData(form)].filter(([key]) => key !== 'image').map(([key, value]) => [key, String(value).trim()]));
     if (Object.values(data).some(value => !value)) { setNotice('Semua ruangan wajib diisi.', true); return; }
     button.disabled = true;
     const { data: created, error } = await db.from('cases').insert({ ...data, seller_id: state.user.id }).select('id').single();
+    if (error) { button.disabled = false; setNotice(`Tidak berjaya dihantar: ${errorText(error)}`, true); return; }
+    const uploadError = image ? await attachImage(created, image) : null;
     button.disabled = false;
-    if (error) { setNotice(`Tidak berjaya dihantar: ${errorText(error)}`, true); return; }
     state.query = ''; state.filter = 'all';
     await fetchCases(false);
-    setNotice(`Isu berjaya dihantar. Case ID: ${caseId(created.id)}`);
+    setNotice(uploadError
+      ? `Isu ${caseId(created.id)} disimpan, tetapi gambar gagal dimuat naik: ${errorText(uploadError)}. Buka kes ini untuk cuba lagi.`
+      : `Isu berjaya dihantar. Case ID: ${caseId(created.id)}`, Boolean(uploadError));
   });
 }
 
@@ -239,7 +268,7 @@ function detailScreen(item) {
   state.selected = item.id;
   const admin = state.profile.role === 'admin';
   const main = el('div');
-  main.innerHTML = `<button class="btn btn-small back" id="back">← Kembali ke senarai</button><div class="page-head"><div><p class="eyebrow">Butiran kes</p><h1 id="detail-id"></h1><p class="muted" id="detail-date"></p></div><div id="detail-status"></div></div><section class="card detail-box"><h2>Laporan seller</h2><div class="detail-grid" id="details"></div><div class="admin-form" id="admin-section" hidden><h2>Tindakan admin</h2><form id="admin-form"><label class="field"><span>Status</span><select class="select" name="status"><option value="open">Open</option><option value="in_progress">In Progress</option><option value="solved">Solved</option></select></label><label class="field"><span>Admin remark</span><textarea class="textarea" name="admin_remark" maxlength="3000" placeholder="Kemas kini atau keputusan untuk seller"></textarea></label><div id="notice" class="notice error" hidden></div><div class="form-actions"><button class="btn btn-primary" type="submit">Simpan kemas kini</button><button class="btn" type="button" id="solve">Solve</button></div></form></div></section><p class="footer-note" id="updated"></p>`;
+  main.innerHTML = `<button class="btn btn-small back" id="back">← Kembali ke senarai</button><div class="page-head"><div><p class="eyebrow">Butiran kes</p><h1 id="detail-id"></h1><p class="muted" id="detail-date"></p></div><div id="detail-status"></div></div><section class="card detail-box"><h2>Laporan seller</h2><div class="detail-grid" id="details"></div><div class="image-section" id="case-image"><h2>Gambar lampiran</h2><p class="muted">Memuatkan gambar…</p></div><div class="admin-form" id="admin-section" hidden><h2>Tindakan admin</h2><form id="admin-form"><label class="field"><span>Status</span><select class="select" name="status"><option value="open">Open</option><option value="in_progress">In Progress</option><option value="solved">Solved</option></select></label><label class="field"><span>Admin remark</span><textarea class="textarea" name="admin_remark" maxlength="3000" placeholder="Kemas kini atau keputusan untuk seller"></textarea></label><div class="form-actions"><button class="btn btn-primary" type="submit">Simpan kemas kini</button><button class="btn" type="button" id="solve">Solve</button></div></form></div><div id="notice" class="notice error" hidden></div><div class="delete-actions"><button class="btn btn-danger" type="button" id="delete-case">Padam kes</button></div></section><p class="footer-note" id="updated"></p>`;
   frame(main);
   main.querySelector('#back').addEventListener('click', () => dashboard());
   main.querySelector('#detail-id').textContent = caseId(item.id);
@@ -248,6 +277,8 @@ function detailScreen(item) {
   const details = main.querySelector('#details');
   const fields = [['Nama customer', item.customer_name], ['No. telefon customer', item.customer_phone], ['No. telefon seller', item.seller_phone], ['Unique code', item.unique_code], ['Seller', admin ? state.sellers?.[item.seller_id]?.display_name || 'Seller' : state.profile.display_name], ['Status', labels[item.status]], ['Komen / isu', item.issue, true], ['Admin remark', item.admin_remark || 'Belum ada remark.', true]];
   fields.forEach(([label, value, wide]) => { const box = el('div'); if (wide) box.className = 'detail-wide'; box.append(el('label', label), el('p', value)); details.append(box); });
+  loadCaseImage(item);
+  main.querySelector('#delete-case').addEventListener('click', () => deleteCase(item));
   main.querySelector('#updated').textContent = `Kemaskini terakhir: ${date(item.updated_at)}`;
   if (!admin) return;
   main.querySelector('#admin-section').hidden = false;
@@ -256,6 +287,54 @@ function detailScreen(item) {
   form.elements.admin_remark.value = item.admin_remark;
   form.addEventListener('submit', e => { e.preventDefault(); saveCase(item, form.elements.status.value, form.elements.admin_remark.value.trim()); });
   main.querySelector('#solve').addEventListener('click', () => saveCase(item, 'solved', form.elements.admin_remark.value.trim()));
+}
+
+async function loadCaseImage(item) {
+  const { data, error } = await db.from('case_images').select('storage_path').eq('case_id', item.id).maybeSingle();
+  if (state.selected !== item.id) return;
+  const section = document.querySelector('#case-image');
+  if (!section) return;
+  section.replaceChildren(el('h2', 'Gambar lampiran'));
+  if (error) { section.append(el('p', `Gambar tidak dapat dimuatkan: ${errorText(error)}`, 'muted')); return; }
+  if (data) {
+    const { data: signed, error: signError } = await db.storage.from(IMAGE_BUCKET).createSignedUrl(data.storage_path, 300);
+    if (state.selected !== item.id) return;
+    if (signError) { section.append(el('p', `Gambar tidak dapat dibuka: ${errorText(signError)}`, 'muted')); return; }
+    const link = el('a'); link.href = signed.signedUrl; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    const image = el('img'); image.src = signed.signedUrl; image.alt = `Gambar untuk kes ${caseId(item.id)}`; image.className = 'case-image';
+    link.append(image); section.append(link, el('p', 'Klik gambar untuk lihat saiz penuh.', 'small-muted'));
+    return;
+  }
+  if (state.profile.role === 'admin') { section.append(el('p', 'Tiada gambar dilampirkan.', 'muted')); return; }
+  const form = el('form'); form.className = 'attach-form';
+  form.innerHTML = `<label class="field"><span>Tambah gambar (pilihan)</span><input class="input" type="file" name="image" accept="image/jpeg,image/png,image/webp" required><small>JPG, PNG atau WebP, maksimum 5 MB.</small></label><button class="btn btn-small" type="submit">Muat naik gambar</button>`;
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const file = form.elements.image.files[0];
+    const validation = await validateImage(file);
+    if (validation) { setNotice(validation, true); return; }
+    const button = form.querySelector('button'); button.disabled = true; setNotice('');
+    const uploadError = await attachImage(item, file);
+    button.disabled = false;
+    if (uploadError) { setNotice(`Gambar gagal dimuat naik: ${errorText(uploadError)}`, true); return; }
+    await loadCaseImage(item);
+    setNotice('Gambar berjaya dimuat naik.');
+  });
+  section.append(el('p', 'Belum ada gambar untuk kes ini.', 'muted'), form);
+}
+
+async function deleteCase(item) {
+  if (!window.confirm(`Padam ${caseId(item.id)}? Semua maklumat kes dan gambar lampiran akan dipadam. Tindakan ini tidak boleh dibatalkan.`)) return;
+  const button = document.querySelector('#delete-case'); button.disabled = true; setNotice('');
+  const { data: image, error: imageError } = await db.from('case_images').select('storage_path').eq('case_id', item.id).maybeSingle();
+  if (imageError) { button.disabled = false; setNotice(`Tidak dapat semak gambar: ${errorText(imageError)}`, true); return; }
+  const { data, error } = await db.from('cases').delete().eq('id', item.id).select('id').maybeSingle();
+  if (error || !data) { button.disabled = false; setNotice(`Kes tidak dapat dipadam: ${errorText(error)}`, true); return; }
+  const { error: storageError } = image ? await db.storage.from(IMAGE_BUCKET).remove([image.storage_path]) : { error: null };
+  await fetchCases(false);
+  setNotice(storageError
+    ? `Kes ${caseId(item.id)} dipadam, tetapi pembersihan gambar gagal. Maklumkan admin: ${errorText(storageError)}`
+    : `Kes ${caseId(item.id)} dan gambarnya telah dipadam.`, Boolean(storageError));
 }
 
 async function saveCase(item, status, remark) {
