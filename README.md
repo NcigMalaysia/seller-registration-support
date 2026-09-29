@@ -4,18 +4,18 @@ Sistem ringkas untuk seller melaporkan isu pendaftaran customer dan admin menyel
 
 ## Fungsi V1
 
-- Seller baharu mendaftar menggunakan **nama, email sendiri dan password**, mengesahkan email, kemudian menunggu kelulusan admin. Akaun lama masih boleh login menggunakan username; akaun baharu login menggunakan email.
+- Seller baharu mendaftar menggunakan **nama, email sendiri dan password**, kemudian menunggu kelulusan admin. Akaun lama masih boleh login menggunakan username; akaun baharu login menggunakan email.
 - Admin melihat senarai pendaftaran dan menekan **Luluskan**. Seller yang belum diluluskan tidak boleh menghantar kes.
 - Seller yang diluluskan menghantar nama customer, telefon customer, telefon seller, unique code dan komen/isu.
 - Case ID dan masa dijana automatik. Seller melihat kes milik akaun sendiri serta remark admin.
 - Admin melihat semua kes, menukar status `Open → In Progress → Solved` dan menulis remark.
-- Pendaftaran terbuka dengan pengesahan email, diikuti kelulusan admin. Jangan kongsi satu akaun antara seller.
+- Pendaftaran terbuka diikuti kelulusan admin. Apabila pengesahan email dimatikan, admin mesti mengesahkan identiti seller melalui saluran lain sebelum meluluskan. Jangan kongsi satu akaun antara seller.
 - Data diasingkan oleh Row Level Security (RLS) dalam database, bukan hanya penapis pada browser.
 
 ## Setup Supabase
 
 1. Cipta projek Supabase. Di **SQL Editor**, jalankan `supabase/schema.sql` **sekali** pada projek baharu. Untuk projek yang sudah menggunakan skema lama, jalankan `supabase/registration_migration.sql` **sekali**.
-2. Pastikan **Authentication → Sign In / Providers → Email** membenarkan pendaftaran dan pengesahan email. Di **Authentication → URL Configuration**, tetapkan Site URL kepada URL website dan tambah URL tersebut sebagai redirect yang dibenarkan. **Custom SMTP diperlukan sebelum berkongsi link dengan seller luar organisasi Supabase**; penghantaran email lalai hanya untuk ahli organisasi dan terhad. Seller perlu menggunakan email sebenar supaya boleh mengesahkan akaun.
+2. Pastikan **Authentication → Sign In / Providers → Email** membenarkan pendaftaran. Untuk menerima pendaftaran seller luar tanpa custom SMTP, matikan **Confirm email** dan sahkan identiti seller di luar sistem sebelum menekan **Luluskan**. Alamat email yang dimasukkan belum terbukti milik pendaftar; pemulihan password melalui email juga tidak boleh diandalkan tanpa penghantar email yang dikonfigurasi. Di **Authentication → URL Configuration**, tetapkan Site URL kepada URL website dan tambah URL tersebut sebagai redirect yang dibenarkan. Jika pengesahan email mahu dihidupkan semula, sediakan custom SMTP terlebih dahulu.
 3. Di **Project Settings → API**, salin Project URL dan **publishable key**. Jangan sekali-kali gunakan secret/service-role key dalam `VITE_...`, HTML, atau GitHub Pages.
 4. Pada komputer admin, sediakan `SUPABASE_URL` dan `SUPABASE_SECRET_KEY` sebagai environment variables. Secret key hanya untuk skrip tempatan. Skrip ini pilihan untuk akaun admin atau akaun manual:
 
