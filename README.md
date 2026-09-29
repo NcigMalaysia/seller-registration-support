@@ -30,6 +30,8 @@ Sistem ringkas untuk seller melaporkan isu pendaftaran customer dan admin menyel
 
 ## Deploy GitHub Pages
 
+GitHub Free hanya menyokong Pages daripada repository public. Jika repo dikekalkan private, GitHub Pages memerlukan pelan yang menyokong private repository atau hosting lain. Jangan terbitkan kod sebelum menyemak pilihan visibility.
+
 1. Push kandungan folder projek ini ke **root** repo GitHub baharu dan pastikan branch `main`.
 2. Dalam repo **Settings → Secrets and variables → Actions → Variables**, tambah `VITE_SUPABASE_URL` dan `VITE_SUPABASE_PUBLISHABLE_KEY`. Kedua-duanya konfigurasi public client, bukan secret key.
 3. Dalam **Settings → Pages → Build and deployment**, pilih **GitHub Actions**. Workflow `.github/workflows/deploy.yml` membina dan menerbitkan setiap push ke `main`.
