@@ -4,17 +4,20 @@ Sistem ringkas untuk seller melaporkan isu pendaftaran customer dan admin menyel
 
 ## Fungsi V1
 
-- Seller login menggunakan **username + password**, hantar nama customer, telefon customer, telefon seller, unique code dan komen/isu.
+- Seller baharu mendaftar menggunakan **nama, email sendiri dan password**, mengesahkan email, kemudian menunggu kelulusan admin. Akaun lama masih boleh login menggunakan username; akaun baharu login menggunakan email.
+- Admin melihat senarai pendaftaran dan menekan **Luluskan**. Seller yang belum diluluskan tidak boleh menghantar kes.
+- Seller yang diluluskan menghantar nama customer, telefon customer, telefon seller, unique code dan komen/isu.
 - Case ID dan masa dijana automatik. Seller melihat kes milik akaun sendiri serta remark admin.
 - Admin melihat semua kes, menukar status `Open → In Progress → Solved` dan menulis remark.
-- Tiada public sign-up. Admin mewujudkan setiap akaun seller secara terkawal.
+- Pendaftaran terbuka dengan pengesahan email, diikuti kelulusan admin. Jangan kongsi satu akaun antara seller.
 - Data diasingkan oleh Row Level Security (RLS) dalam database, bukan hanya penapis pada browser.
 
 ## Setup Supabase
 
-1. Cipta projek Supabase. Di **SQL Editor**, jalankan `supabase/schema.sql` **sekali** pada projek baharu.
-2. Di **Project Settings → API**, salin Project URL dan **publishable key**. Jangan sekali-kali gunakan secret/service-role key dalam `VITE_...`, HTML, atau GitHub Pages.
-3. Pada komputer admin, sediakan `SUPABASE_URL` dan `SUPABASE_SECRET_KEY` sebagai environment variables. Secret key hanya untuk skrip tempatan. Jalankan:
+1. Cipta projek Supabase. Di **SQL Editor**, jalankan `supabase/schema.sql` **sekali** pada projek baharu. Untuk projek yang sudah menggunakan skema lama, jalankan `supabase/registration_migration.sql` **sekali**.
+2. Pastikan **Authentication → Sign In / Providers → Email** membenarkan pendaftaran dan pengesahan email. Di **Authentication → URL Configuration**, tetapkan Site URL kepada URL website dan tambah URL tersebut sebagai redirect yang dibenarkan. Seller perlu menggunakan email sebenar supaya boleh mengesahkan akaun.
+3. Di **Project Settings → API**, salin Project URL dan **publishable key**. Jangan sekali-kali gunakan secret/service-role key dalam `VITE_...`, HTML, atau GitHub Pages.
+4. Pada komputer admin, sediakan `SUPABASE_URL` dan `SUPABASE_SECRET_KEY` sebagai environment variables. Secret key hanya untuk skrip tempatan. Skrip ini pilihan untuk akaun admin atau akaun manual:
 
    ```bash
    npm install
@@ -26,7 +29,7 @@ Sistem ringkas untuk seller melaporkan isu pendaftaran customer dan admin menyel
 
    **Nota:** login username dipetakan kepada alamat dalaman `${username}@seller.example.com` untuk Supabase Auth. Tiada self-service password recovery melalui email bagi akaun ini; admin reset dengan skrip. Jika mahu reset sendiri, perlu tambah aliran email sah pada versi seterusnya.
 
-4. Jalankan lokal: salin `.env.example` ke `.env`, isi URL dan publishable key, kemudian `npm run dev`.
+5. Jalankan lokal: salin `.env.example` ke `.env`, isi URL dan publishable key, kemudian `npm run dev`.
 
 ## Deploy GitHub Pages
 
@@ -36,6 +39,8 @@ GitHub Free hanya menyokong Pages daripada repository public. Jika repo dikekalk
 2. Dalam repo **Settings → Secrets and variables → Actions → Variables**, tambah `VITE_SUPABASE_URL` dan `VITE_SUPABASE_PUBLISHABLE_KEY`. Kedua-duanya konfigurasi public client, bukan secret key.
 3. Dalam **Settings → Pages → Build and deployment**, pilih **GitHub Actions**. Workflow `.github/workflows/deploy.yml` membina dan menerbitkan setiap push ke `main`.
 4. Uji dengan akaun seller dan admin sebenar. Seller mesti hanya boleh lihat kes sendiri; admin boleh buka, kemas kini remark dan Solve.
+
+Untuk projek yang menyahaktifkan pendedahan jadual automatik dalam **Data API → Settings**, pastikan `public.profiles` dan `public.cases` didedahkan secara manual; fungsi tidak perlu didedahkan.
 
 ## Keselamatan dan batasan
 
