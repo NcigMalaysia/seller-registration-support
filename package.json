@@ -1,0 +1,18 @@
+{
+  "name": "seller-registration-support",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "node --check src/main.js && node --check scripts/manage-user.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.58.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}
