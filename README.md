@@ -15,7 +15,7 @@ Sistem ringkas untuk seller melaporkan isu pendaftaran customer dan admin menyel
 ## Setup Supabase
 
 1. Cipta projek Supabase. Di **SQL Editor**, jalankan `supabase/schema.sql` **sekali** pada projek baharu. Untuk projek yang sudah menggunakan skema lama, jalankan `supabase/registration_migration.sql` **sekali**.
-2. Pastikan **Authentication → Sign In / Providers → Email** membenarkan pendaftaran dan pengesahan email. Di **Authentication → URL Configuration**, tetapkan Site URL kepada URL website dan tambah URL tersebut sebagai redirect yang dibenarkan. Seller perlu menggunakan email sebenar supaya boleh mengesahkan akaun.
+2. Pastikan **Authentication → Sign In / Providers → Email** membenarkan pendaftaran dan pengesahan email. Di **Authentication → URL Configuration**, tetapkan Site URL kepada URL website dan tambah URL tersebut sebagai redirect yang dibenarkan. **Custom SMTP diperlukan sebelum berkongsi link dengan seller luar organisasi Supabase**; penghantaran email lalai hanya untuk ahli organisasi dan terhad. Seller perlu menggunakan email sebenar supaya boleh mengesahkan akaun.
 3. Di **Project Settings → API**, salin Project URL dan **publishable key**. Jangan sekali-kali gunakan secret/service-role key dalam `VITE_...`, HTML, atau GitHub Pages.
 4. Pada komputer admin, sediakan `SUPABASE_URL` dan `SUPABASE_SECRET_KEY` sebagai environment variables. Secret key hanya untuk skrip tempatan. Skrip ini pilihan untuk akaun admin atau akaun manual:
 
