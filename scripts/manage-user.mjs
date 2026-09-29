@@ -19,7 +19,7 @@ if (command === 'create') {
   if (!displayName?.trim() || !['seller', 'admin'].includes(role)) throw new Error('Display name and valid role are required.');
   const { data, error } = await db.auth.admin.createUser({ email, password, email_confirm: true });
   if (error) throw error;
-  const { error: profileError } = await db.from('profiles').insert({ id: data.user.id, username, display_name: displayName.trim(), role });
+  const { error: profileError } = await db.from('profiles').upsert({ id: data.user.id, username, display_name: displayName.trim(), email, role, approved_at: new Date().toISOString() });
   if (profileError) {
     await db.auth.admin.deleteUser(data.user.id);
     throw profileError;
