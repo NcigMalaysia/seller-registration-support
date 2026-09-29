@@ -43,7 +43,7 @@ GitHub Free hanya menyokong Pages daripada repository public. Jika repo dikekalk
 3. Dalam **Settings → Pages → Build and deployment**, pilih **GitHub Actions**. Workflow `.github/workflows/deploy.yml` membina dan menerbitkan setiap push ke `main`.
 4. Uji dengan akaun seller dan admin sebenar. Seller mesti hanya boleh lihat kes sendiri; admin boleh buka, kemas kini remark dan Solve.
 
-Untuk projek yang menyahaktifkan pendedahan jadual automatik dalam **Data API → Settings**, pastikan `public.profiles` dan `public.cases` didedahkan secara manual; fungsi tidak perlu didedahkan.
+Untuk projek yang menyahaktifkan pendedahan jadual automatik dalam **Data API → Settings**, dedahkan `public.profiles`, `public.cases` dan `public.case_images` secara manual; fungsi tidak perlu didedahkan. Pastikan RLS kekal aktif pada ketiga-tiga jadual.
 
 ## Keselamatan dan batasan
 
