@@ -28,20 +28,56 @@ const errorText = error => error?.message || 'Ada masalah. Sila cuba semula.';
 
 function loginScreen(message = '') {
   state.selected = null;
-  app.innerHTML = `<main class="login-page"><section class="login-card"><div class="brand"><span class="brand-mark">S</span><span>Seller Support</span></div><h1>Log masuk</h1><p>Semak dan laporkan isu pendaftaran customer.</p><form id="login-form"><label class="field"><span>Username</span><input class="input" name="username" autocomplete="username" pattern="[a-zA-Z0-9_]{3,32}" required placeholder="Contoh: seller01"></label><label class="field"><span>Password</span><input class="input" name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></label><div id="notice" class="notice error" hidden></div><button class="btn btn-primary" type="submit">Log masuk</button></form></section></main>`;
+  app.innerHTML = `<main class="login-page"><section class="login-card"><div class="brand"><span class="brand-mark">S</span><span>Seller Support</span></div><h1>Log masuk</h1><p>Semak dan laporkan isu pendaftaran customer.</p><form id="login-form"><label class="field"><span>Username atau email</span><input class="input" name="username" autocomplete="username" required placeholder="seller01 atau email anda"></label><label class="field"><span>Password</span><input class="input" name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></label><div id="notice" class="notice error" hidden></div><button class="btn btn-primary" type="submit">Log masuk</button></form><p class="auth-switch">Seller baharu? <button class="text-button" id="show-register" type="button">Daftar akaun</button></p></section></main>`;
   if (message) setNotice(message, true);
+  document.querySelector('#show-register').addEventListener('click', () => registrationScreen());
   document.querySelector('#login-form').addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button');
     const data = new FormData(event.currentTarget);
     const username = String(data.get('username')).trim().toLowerCase();
+    const email = username.includes('@') ? username : /^[a-z0-9_]{3,32}$/.test(username) ? `${username}@seller.example.com` : '';
+    if (!email) { setNotice('Masukkan username atau email yang sah.', true); return; }
     button.disabled = true;
     setNotice('');
-    const { error } = await db.auth.signInWithPassword({ email: `${username}@seller.example.com`, password: String(data.get('password')) });
+    const { error } = await db.auth.signInWithPassword({ email, password: String(data.get('password')) });
     button.disabled = false;
-    if (error) { setNotice('Username atau password tidak sah.', true); return; }
+    if (error) { setNotice('Email/username atau password tidak sah.', true); return; }
     await loadAccount();
   });
+}
+
+function registrationScreen(message = '') {
+  app.innerHTML = `<main class="login-page"><section class="login-card"><div class="brand"><span class="brand-mark">S</span><span>Seller Support</span></div><h1>Daftar sebagai seller</h1><p>Gunakan email sendiri. Admin perlu meluluskan akaun sebelum anda boleh hantar isu.</p><form id="register-form"><label class="field"><span>Nama seller</span><input class="input" name="display_name" maxlength="120" minlength="2" autocomplete="name" required></label><label class="field"><span>Email</span><input class="input" name="email" type="email" autocomplete="email" required></label><label class="field"><span>Password baharu</span><input class="input" name="password" type="password" minlength="8" autocomplete="new-password" required></label><label class="field"><span>Ulang password</span><input class="input" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required></label><div id="notice" class="notice" hidden></div><button class="btn btn-primary" type="submit">Daftar akaun</button></form><p class="auth-switch">Sudah ada akaun? <button class="text-button" id="show-login" type="button">Log masuk</button></p></section></main>`;
+  if (message) setNotice(message);
+  document.querySelector('#show-login').addEventListener('click', () => loginScreen());
+  document.querySelector('#register-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const display_name = String(values.get('display_name')).trim();
+    const email = String(values.get('email')).trim().toLowerCase();
+    const password = String(values.get('password'));
+    if (display_name.length < 2 || password !== String(values.get('confirm_password'))) {
+      setNotice('Semak nama dan pastikan kedua-dua password sama.', true); return;
+    }
+    const button = form.querySelector('[type=submit]');
+    button.disabled = true;
+    setNotice('');
+    const { data, error } = await db.auth.signUp({ email, password, options: { data: { display_name }, emailRedirectTo: location.origin + location.pathname } });
+    button.disabled = false;
+    if (error) { setNotice(`Pendaftaran gagal: ${errorText(error)}`, true); return; }
+    if (data.session) { await loadAccount(); return; }
+    form.reset();
+    setNotice('Pendaftaran diterima. Semak email untuk pengesahan, kemudian log masuk. Akaun boleh digunakan selepas admin meluluskan.');
+  });
+}
+
+function pendingScreen() {
+  const main = el('div');
+  main.innerHTML = `<div class="page-head"><div><p class="eyebrow">Seller · Menunggu kelulusan</p><h1>Akaun belum diluluskan</h1><p class="muted">Admin akan semak pendaftaran anda. Klik Semak semula selepas diluluskan.</p></div><button class="btn" id="check-approval">Semak semula</button></div><section class="card detail-box"><p>Anda belum boleh menghantar atau melihat kes selagi akaun ini menunggu kelulusan.</p></section>`;
+  frame(main);
+  main.querySelector('#check-approval').addEventListener('click', loadAccount);
 }
 
 function frame(content) {
@@ -55,7 +91,7 @@ async function loadAccount() {
   app.innerHTML = '<div class="loading">Memuatkan akaun…</div>';
   const { data: { user }, error } = await db.auth.getUser();
   if (error || !user) { loginScreen(); return; }
-  const { data: profile, error: profileError } = await db.from('profiles').select('id,username,display_name,role').eq('id', user.id).single();
+  const { data: profile, error: profileError } = await db.from('profiles').select('id,username,display_name,role,approved_at').eq('id', user.id).single();
   if (profileError || !profile) {
     await db.auth.signOut();
     loginScreen('Akaun ini belum diberikan akses. Sila hubungi admin.');
@@ -65,6 +101,7 @@ async function loadAccount() {
   state.profile = profile;
   state.cases = [];
   state.page = 0;
+  if (profile.role === 'seller' && !profile.approved_at) { pendingScreen(); return; }
   await fetchCases(false);
 }
 
@@ -93,6 +130,13 @@ function dashboard(message = '') {
   main.innerHTML = `<div class="page-head"><div><p class="eyebrow" id="role-title"></p><h1 id="page-title"></h1><p class="muted" id="page-subtitle"></p></div><div id="head-actions"></div></div><section class="stats"><div class="card stat"><strong id="count-all"></strong><span>Kes dipaparkan</span></div><div class="card stat"><strong id="count-active"></strong><span>Belum selesai</span></div><div class="card stat"><strong id="count-solved"></strong><span>Solved</span></div></section><section class="card"><div class="toolbar"><h2>Senarai kes</h2><div class="toolbar-controls"><input class="input" id="search" type="search" placeholder="Cari kes / customer…" aria-label="Cari kes"><select class="select" id="filter" aria-label="Tapis status"><option value="all">Semua status</option><option value="open">Open</option><option value="in_progress">In Progress</option><option value="solved">Solved</option></select><button class="btn btn-small" id="refresh">Refresh</button></div></div><div class="table-wrap"><table><thead><tr id="head-row"></tr></thead><tbody id="case-rows"></tbody></table></div><div id="load-row" class="load-row" hidden><button class="btn btn-small" id="load-more">Muat lagi</button></div></section><p class="footer-note">Masa dipaparkan mengikut waktu Malaysia. Gunakan Refresh untuk melihat perubahan terkini.</p><div id="notice" class="notice error" hidden></div>`;
   frame(main);
   const admin = state.profile.role === 'admin';
+  if (admin) {
+    const approvals = el('section', null, 'card approvals');
+    approvals.id = 'pending-sellers';
+    approvals.innerHTML = `<div class="approval-head"><h2>Pendaftaran seller menunggu kelulusan <span class="pending-count">…</span></h2><button class="btn btn-small" id="refresh-pending">Refresh</button></div><div class="pending-list"></div>`;
+    main.querySelector('.stats').before(approvals);
+    approvals.querySelector('#refresh-pending').addEventListener('click', loadPendingSellers);
+  }
   main.querySelector('#role-title').textContent = admin ? 'Admin dashboard' : 'Seller dashboard';
   main.querySelector('#page-title').textContent = admin ? 'Semua isu seller' : 'Kes pendaftaran saya';
   main.querySelector('#page-subtitle').textContent = admin ? 'Semak laporan dan berikan keputusan kepada seller.' : 'Laporkan isu dan semak kemas kini daripada admin.';
@@ -111,6 +155,32 @@ function dashboard(message = '') {
   main.querySelector('#load-more').addEventListener('click', () => fetchCases(true));
   if (message) setNotice(message, true);
   renderRows();
+  if (admin) loadPendingSellers();
+}
+
+async function loadPendingSellers() {
+  const { data, error } = await db.from('profiles').select('id,display_name,email,created_at').eq('role', 'seller').is('approved_at', null).order('created_at', { ascending: true });
+  const section = document.querySelector('#pending-sellers');
+  if (!section) return;
+  if (error) { section.querySelector('.pending-list').textContent = `Tidak dapat memuatkan pendaftaran: ${errorText(error)}`; return; }
+  section.querySelector('.pending-count').textContent = String(data.length);
+  const list = section.querySelector('.pending-list');
+  list.replaceChildren();
+  if (!data.length) { list.append(el('p', 'Tiada pendaftaran menunggu kelulusan.', 'muted')); return; }
+  for (const seller of data) {
+    const row = el('div', null, 'approval-row');
+    const info = el('div');
+    info.append(el('strong', seller.display_name), el('span', seller.email || 'Email tidak tersedia', 'small-muted'));
+    const approve = el('button', 'Luluskan', 'btn btn-small btn-primary');
+    approve.addEventListener('click', async () => {
+      approve.disabled = true;
+      const { error: approveError } = await db.from('profiles').update({ approved_at: new Date().toISOString() }).eq('id', seller.id);
+      if (approveError) { approve.disabled = false; setNotice(`Kelulusan gagal: ${errorText(approveError)}`, true); return; }
+      await loadPendingSellers();
+    });
+    row.append(info, approve);
+    list.append(row);
+  }
 }
 
 function renderRows() {
