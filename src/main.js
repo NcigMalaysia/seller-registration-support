@@ -66,7 +66,12 @@ function registrationScreen(message = '') {
     setNotice('');
     const { data, error } = await db.auth.signUp({ email, password, options: { data: { display_name }, emailRedirectTo: location.origin + location.pathname } });
     button.disabled = false;
-    if (error) { setNotice(`Pendaftaran gagal: ${errorText(error)}`, true); return; }
+    if (error) {
+      setNotice(error.code === 'email_address_not_authorized'
+        ? 'Pendaftaran email belum tersedia. Hubungi admin untuk mengaktifkan penghantaran email.'
+        : `Pendaftaran gagal: ${errorText(error)}`, true);
+      return;
+    }
     if (data.session) { await loadAccount(); return; }
     form.reset();
     setNotice('Pendaftaran diterima. Semak email untuk pengesahan, kemudian log masuk. Akaun boleh digunakan selepas admin meluluskan.');
