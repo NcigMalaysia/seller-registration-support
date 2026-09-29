@@ -27,17 +27,16 @@ create index if not exists cases_seller_created_idx on public.cases(seller_id, c
 create index if not exists cases_created_idx on public.cases(created_at desc);
 
 -- SECURITY DEFINER avoids a recursive profile RLS check. Only authenticated users can execute it.
-create or replace function public.is_support_admin()
+create function public.is_support_admin()
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (
     select 1 from public.profiles
     where id = (select auth.uid()) and role = 'admin'
   );
 $$;
-revoke all on function public.is_support_admin() from public, anon;
 grant execute on function public.is_support_admin() to authenticated;
 
-create or replace function public.prepare_case_update()
+create function public.prepare_case_update()
 returns trigger language plpgsql set search_path = '' as $$
 begin
   -- Immutable seller submission. Admin may only change status and remark.
@@ -59,7 +58,6 @@ begin
   return new;
 end;
 $$;
-drop trigger if exists prepare_case_update_trigger on public.cases;
 create trigger prepare_case_update_trigger before update on public.cases
 for each row execute function public.prepare_case_update();
 
@@ -86,8 +84,6 @@ create policy "Admin updates cases" on public.cases for update to authenticated
   using ((select public.is_support_admin()))
   with check ((select public.is_support_admin()));
 
-revoke all on public.profiles, public.cases from anon;
-revoke all on public.profiles, public.cases from authenticated;
 grant select on public.profiles to authenticated;
 grant select, insert, update on public.cases to authenticated;
 grant usage, select on sequence public.cases_id_seq to authenticated;
