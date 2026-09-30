@@ -50,3 +50,9 @@ Untuk projek yang menyahaktifkan pendedahan jadual automatik dalam **Data API â†
 - Senarai dimuatkan 100 kes setiap kali; carian dan ringkasan hanya meliputi kes yang telah dimuatkan (simbol `+` menunjukkan masih ada kes lain).
 - Refresh manual untuk melihat kemas kini terkini. Sistem belum menghantar pemberitahuan automatik.
 - `SUPABASE_SECRET_KEY` memberi kuasa pentadbir penuh: simpan hanya di komputer admin/secret manager, jangan letak dalam GitHub Actions untuk deployment.
+
+## Case conversations
+
+Seller case owners and admins can send saved text messages from case details. Only approved sellers can send; other sellers cannot read or send to the case. Messages cannot be edited or deleted through the app. Chat checks for changes every 5 seconds while the case page is visible. This is periodic refresh, not instant push or offline notifications. Latest 100 messages load first; use Mesej terdahulu for history. Maximum 2,000 characters per message. Failed sends preserve the text; a client token prevents duplicate messages on retry.
+
+For an existing project run `supabase/chat_migration.sql`, then expose `public.case_messages` under Data API Settings. Verify RLS and grants after enabling the table. No external chat subscription is required; database and API usage count toward Supabase plan limits.
