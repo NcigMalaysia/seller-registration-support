@@ -11,6 +11,7 @@ const PAGE_SIZE = 100;
 const IMAGE_BUCKET = 'case-images';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+let chatTimer = null;
 
 const el = (tag, text, className) => {
   const node = document.createElement(tag);
@@ -109,6 +110,7 @@ function pendingScreen() {
 }
 
 function frame(content) {
+  clearInterval(chatTimer);
   app.innerHTML = `<header class="topbar"><div class="shell"><div class="brand"><span class="brand-mark">S</span><span>Seller Support</span></div><div class="top-right"><span class="user-label" id="user-label"></span><button class="btn btn-small btn-quiet" id="signout">Log keluar</button></div></div></header><main class="shell main" id="content"></main>`;
   document.querySelector('#user-label').textContent = `${state.profile.display_name} · ${state.profile.role === 'admin' ? 'Admin' : 'Seller'}`;
   document.querySelector('#content').append(content);
@@ -278,6 +280,7 @@ function detailScreen(item) {
   const fields = [['Nama customer', item.customer_name], ['No. telefon customer', item.customer_phone], ['No. telefon seller', item.seller_phone], ['Unique code', item.unique_code], ['Seller', admin ? state.sellers?.[item.seller_id]?.display_name || 'Seller' : state.profile.display_name], ['Status', labels[item.status]], ['Komen / isu', item.issue, true], ['Admin remark', item.admin_remark || 'Belum ada remark.', true]];
   fields.forEach(([label, value, wide]) => { const box = el('div'); if (wide) box.className = 'detail-wide'; box.append(el('label', label), el('p', value)); details.append(box); });
   loadCaseImage(item);
+  mountCaseChat(main, item);
   main.querySelector('#updated').textContent = `Kemaskini terakhir: ${date(item.updated_at)}`;
   if (!admin) return;
   main.querySelector('#admin-section').hidden = false;
@@ -320,6 +323,64 @@ async function loadCaseImage(item) {
     setNotice('Gambar berjaya dimuat naik.');
   });
   section.append(el('p', 'Belum ada gambar untuk kes ini.', 'muted'), form);
+}
+
+function mountCaseChat(main, item) {
+  const section = el('section', null, 'card detail-box case-chat');
+  section.innerHTML = `<div class="chat-heading"><h2>Perbualan kes</h2><button type="button" class="btn btn-small" id="chat-refresh">Refresh chat</button></div><p class="small-muted">Mesej dikemas kini secara automatik setiap 5 saat semasa halaman ini dibuka.</p><button type="button" class="btn btn-small" id="chat-older" hidden>Mesej terdahulu</button><div class="chat-messages" aria-live="polite"></div><label class="field"><span>${state.profile.role === 'admin' ? 'Balasan kepada seller' : 'Mesej kepada admin'}</span><textarea class="textarea" id="chat-text" maxlength="2000" placeholder="Tulis mesej…"></textarea></label><div class="form-actions"><button class="btn btn-primary" type="button" id="chat-send">Hantar</button></div><p class="small-muted chat-notice" role="status"></p>`;
+  main.querySelector('#updated').before(section);
+  const list = section.querySelector('.chat-messages');
+  const input = section.querySelector('#chat-text');
+  const send = section.querySelector('#chat-send');
+  const notice = section.querySelector('.chat-notice');
+  const older = section.querySelector('#chat-older');
+  let limit = 100, busy = false, signature = '', pending = null;
+  const current = () => section.isConnected && state.selected === item.id && state.user;
+  async function refresh() {
+    if (!current() || busy) return;
+    busy = true;
+    try {
+      const { data, error } = await db.from('case_messages').select('id,sender_id,sender_role,body,created_at').eq('case_id', item.id).order('id', { ascending: false }).limit(limit + 1);
+      if (!current()) return;
+      if (error) { notice.textContent = `Chat tidak dapat dimuatkan: ${errorText(error)}`; return; }
+      older.hidden = data.length <= limit;
+      const messages = data.slice(0, limit).reverse();
+      const next = JSON.stringify(messages);
+      if (next === signature) return;
+      signature = next;
+      const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+      list.replaceChildren();
+      if (!messages.length) list.append(el('p', 'Belum ada mesej. Mulakan perbualan di bawah.', 'muted'));
+      for (const message of messages) {
+        const own = message.sender_id === state.user.id;
+        const row = el('div', null, `chat-message${own ? ' chat-own' : ''}`);
+        row.append(el('p', `${message.sender_role === 'admin' ? 'Admin' : 'Seller'} · ${date(message.created_at)}`, 'chat-meta'), el('p', message.body, 'chat-bubble'));
+        list.append(row);
+      }
+      if (nearBottom) list.scrollTop = list.scrollHeight;
+    } catch (error) { if (current()) notice.textContent = `Sambungan chat gagal: ${errorText(error)}`; }
+    finally { busy = false; }
+  }
+  async function sendMessage() {
+    const body = input.value.trim();
+    if (!body || body.length > 2000) { notice.textContent = 'Taip mesej antara 1 hingga 2,000 aksara.'; input.focus(); return; }
+    if (send.disabled) return;
+    if (!pending || pending.body !== body) pending = { body, token: crypto.randomUUID() };
+    send.disabled = true; input.disabled = true; notice.textContent = 'Menghantar…';
+    try {
+      const { error } = await db.from('case_messages').insert({ case_id: item.id, sender_id: state.user.id, sender_role: state.profile.role, body, client_token: pending.token });
+      if (!current()) return;
+      if (error && error.code !== '23505') { notice.textContent = `Mesej gagal dihantar: ${errorText(error)}. Mesej anda dikekalkan untuk cuba lagi.`; return; }
+      input.value = ''; pending = null; notice.textContent = 'Mesej berjaya dihantar.';
+      await refresh();
+    } catch (error) { if (current()) notice.textContent = `Mesej gagal dihantar: ${errorText(error)}. Cuba lagi.`; }
+    finally { send.disabled = false; input.disabled = false; if (current()) input.focus(); }
+  }
+  send.addEventListener('click', sendMessage);
+  section.querySelector('#chat-refresh').addEventListener('click', refresh);
+  older.addEventListener('click', () => { limit += 100; refresh(); });
+  refresh();
+  chatTimer = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 5000);
 }
 
 async function saveCase(item, status, remark) {
