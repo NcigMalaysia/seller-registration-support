@@ -268,7 +268,7 @@ function detailScreen(item) {
   state.selected = item.id;
   const admin = state.profile.role === 'admin';
   const main = el('div');
-  main.innerHTML = `<button class="btn btn-small back" id="back">← Kembali ke senarai</button><div class="page-head"><div><p class="eyebrow">Butiran kes</p><h1 id="detail-id"></h1><p class="muted" id="detail-date"></p></div><div id="detail-status"></div></div><section class="card detail-box"><h2>Laporan seller</h2><div class="detail-grid" id="details"></div><div class="image-section" id="case-image"><h2>Gambar lampiran</h2><p class="muted">Memuatkan gambar…</p></div><div class="admin-form" id="admin-section" hidden><h2>Tindakan admin</h2><form id="admin-form"><label class="field"><span>Status</span><select class="select" name="status"><option value="open">Open</option><option value="in_progress">In Progress</option><option value="solved">Solved</option></select></label><label class="field"><span>Admin remark</span><textarea class="textarea" name="admin_remark" maxlength="3000" placeholder="Kemas kini atau keputusan untuk seller"></textarea></label><div class="form-actions"><button class="btn btn-primary" type="submit">Simpan kemas kini</button><button class="btn" type="button" id="solve">Solve</button></div></form></div><div id="notice" class="notice error" hidden></div><div class="delete-actions"><button class="btn btn-danger" type="button" id="delete-case">Padam kes</button></div></section><p class="footer-note" id="updated"></p>`;
+  main.innerHTML = `<button class="btn btn-small back" id="back">← Kembali ke senarai</button><div class="page-head"><div><p class="eyebrow">Butiran kes</p><h1 id="detail-id"></h1><p class="muted" id="detail-date"></p></div><div id="detail-status"></div></div><section class="card detail-box"><h2>Laporan seller</h2><div class="detail-grid" id="details"></div><div class="image-section" id="case-image"><h2>Gambar lampiran</h2><p class="muted">Memuatkan gambar…</p></div><div class="admin-form" id="admin-section" hidden><h2>Tindakan admin</h2><form id="admin-form"><label class="field"><span>Status</span><select class="select" name="status"><option value="open">Open</option><option value="in_progress">In Progress</option><option value="solved">Solved</option></select></label><label class="field"><span>Admin remark</span><textarea class="textarea" name="admin_remark" maxlength="3000" placeholder="Kemas kini atau keputusan untuk seller"></textarea></label><div class="form-actions"><button class="btn btn-primary" type="submit">Simpan kemas kini</button><button class="btn" type="button" id="solve">Solve</button></div></form></div><div id="notice" class="notice error" hidden></div></section><p class="footer-note" id="updated"></p>`;
   frame(main);
   main.querySelector('#back').addEventListener('click', () => dashboard());
   main.querySelector('#detail-id').textContent = caseId(item.id);
@@ -278,7 +278,6 @@ function detailScreen(item) {
   const fields = [['Nama customer', item.customer_name], ['No. telefon customer', item.customer_phone], ['No. telefon seller', item.seller_phone], ['Unique code', item.unique_code], ['Seller', admin ? state.sellers?.[item.seller_id]?.display_name || 'Seller' : state.profile.display_name], ['Status', labels[item.status]], ['Komen / isu', item.issue, true], ['Admin remark', item.admin_remark || 'Belum ada remark.', true]];
   fields.forEach(([label, value, wide]) => { const box = el('div'); if (wide) box.className = 'detail-wide'; box.append(el('label', label), el('p', value)); details.append(box); });
   loadCaseImage(item);
-  main.querySelector('#delete-case').addEventListener('click', () => deleteCase(item));
   main.querySelector('#updated').textContent = `Kemaskini terakhir: ${date(item.updated_at)}`;
   if (!admin) return;
   main.querySelector('#admin-section').hidden = false;
@@ -321,20 +320,6 @@ async function loadCaseImage(item) {
     setNotice('Gambar berjaya dimuat naik.');
   });
   section.append(el('p', 'Belum ada gambar untuk kes ini.', 'muted'), form);
-}
-
-async function deleteCase(item) {
-  if (!window.confirm(`Padam ${caseId(item.id)}? Semua maklumat kes dan gambar lampiran akan dipadam. Tindakan ini tidak boleh dibatalkan.`)) return;
-  const button = document.querySelector('#delete-case'); button.disabled = true; setNotice('');
-  const { data: image, error: imageError } = await db.from('case_images').select('storage_path').eq('case_id', item.id).maybeSingle();
-  if (imageError) { button.disabled = false; setNotice(`Tidak dapat semak gambar: ${errorText(imageError)}`, true); return; }
-  const { data, error } = await db.from('cases').delete().eq('id', item.id).select('id').maybeSingle();
-  if (error || !data) { button.disabled = false; setNotice(`Kes tidak dapat dipadam: ${errorText(error)}`, true); return; }
-  const { error: storageError } = image ? await db.storage.from(IMAGE_BUCKET).remove([image.storage_path]) : { error: null };
-  await fetchCases(false);
-  setNotice(storageError
-    ? `Kes ${caseId(item.id)} dipadam, tetapi pembersihan gambar gagal. Maklumkan admin: ${errorText(storageError)}`
-    : `Kes ${caseId(item.id)} dan gambarnya telah dipadam.`, Boolean(storageError));
 }
 
 async function saveCase(item, status, remark) {
