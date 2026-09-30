@@ -1,4 +1,4 @@
--- Run once in the existing project before deploying the image/delete interface.
+-- Run once in the existing project before deploying the image interface.
 -- Private bucket: each object path is seller_uuid/case_id/random_filename.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('case-images', 'case-images', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
@@ -49,9 +49,3 @@ for delete to authenticated using (
     or (select public.is_support_admin())
   )
 );
-
-create policy "Seller deletes own case" on public.cases
-for delete to authenticated using (seller_id = (select auth.uid()));
-create policy "Admin deletes any case" on public.cases
-for delete to authenticated using ((select public.is_support_admin()));
-grant delete on public.cases to authenticated;
